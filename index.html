@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>標本抽出シミュレーター</title>
+    <style>
+        /* (CSSは変更ありません) */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px;
+            background-color: #f7f9fc;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 5px;
+        }
+        .container {
+            width: 95%;
+            max-width: 600px;
+            background: #ffffff;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+        .controls {
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .control-group label {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-right: 15px;
+            flex-basis: 40%;
+        }
+        .control-group input[type="number"] {
+            width: 150px;
+            padding: 8px;
+            font-size: 1.1em;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            text-align: right;
+        }
+        .action-button {
+            width: 100%;
+            padding: 12px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #fff;
+            background-color: #3498db;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .action-button:hover {
+            background-color: #2980b9;
+        }
+        .secondary-button {
+            width: 150px;
+            padding: 8px;
+            font-size: 1.0em;
+            font-weight: bold;
+            color: #fff;
+            background-color: #2ecc71;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .secondary-button:hover {
+            background-color: #27ae60;
+        }
+        .results {
+            width: 100%;
+            margin-top: 25px;
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+        }
+        h2 {
+            margin-top: 0;
+            text-align: center;
+            color: #333;
+        }
+        .result-item {
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #f7f9fc;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .result-item span:first-child {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .result-item span:last-child {
+            font-family: monospace;
+            font-weight: bold;
+            color: #e74c3c;
+            font-size: 1.1em;
+        }
+        .result-item.sample-data span:first-child {
+            align-self: flex-start;
+            flex-shrink: 0; 
+        }
+        .result-item.sample-data span:last-child {
+            font-size: 0.9em; 
+            text-align: left; 
+            line-height: 1.6;
+            color: #34495e; 
+            margin-left: 10px;
+        }
+        .note {
+            font-size: 0.85em;
+            color: #7f8c8d;
+            margin-top: 10px;
+            padding: 10px;
+            background: #ecf0f1;
+            border-radius: 5px;
+        }
+        #errorMessage {
+            color: #e74c3c;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>標本抽出シミュレーター</h1>
+        <p>353,050個のある母集団から100個のサンプルを無作為抽出します。ボタンを押してください。</p>
+
+        <button id="runButton" class="action-button">サンプル抽出</button>
+        <p id="errorMessage"></p>
+
+        <div class="results" id="resultsArea" style="display:none;">
+            <h2>抽出結果</h2>
+            <div class="result-item">
+                <span>標本平均 (X̄)</span>
+                <span id="sampleMean">---</span>
+            </div>
+            <div class="result-item">
+                <span>標本標準偏差 (s)</span>
+                <span id="sampleStdDev">---</span>
+            </div>
+            <div class="result-item sample-data">
+                <span>標本データ</span>
+                <span id="sampleDataList">---</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container" id="confidenceArea" style="display:none;">
+        <h2>信頼区間の算出</h2>
+        <div class="control-group">
+            <label for="confidenceLevel">信頼度 (t) %</label>
+            <input type="number" id="confidenceLevel" value="95" min="1" max="99" step="1">
+        </div>
+        <button id="calculateCIButton" class="secondary-button">信頼区間を算出</button>
+        <div class="results">
+            <div class="result-item">
+                <span>信頼区間</span>
+                <span id="confidenceInterval">---</span>
+            </div>
+        </div>
+        <p class="note">
+            ※ この計算は、大標本（$n \ge 30$程度）を想定し、t分布の代わりに標準正規分布(Z値)で近似しています。
+        </p>
+    </div>
+
+
+    <script>
+        // === DOM要素の取得 (変更なし) ===
+        const runButton = document.getElementById('runButton');
+        const resultsArea = document.getElementById('resultsArea');
+        const sampleMeanSpan = document.getElementById('sampleMean');
+        const sampleStdDevSpan = document.getElementById('sampleStdDev');
+        const sampleDataListSpan = document.getElementById('sampleDataList'); 
+        const errorMessageSpan = document.getElementById('errorMessage');
+
+        const confidenceArea = document.getElementById('confidenceArea');
+        const confidenceLevelInput = document.getElementById('confidenceLevel');
+        const calculateCIButton = document.getElementById('calculateCIButton');
+        const confidenceIntervalSpan = document.getElementById('confidenceInterval');
+
+        // === 抽出結果を保持する変数 (変更なし) ===
+        let currentMean = null; 
+        let currentSampleMean = null; 
+        let currentSampleStdDev = null; 
+        let currentN = null;
+
+        // === 統計計算のコア関数 ===
+
+        /**
+         * 正規分布 N(mean, stdDev^2) に従う乱数を1つ生成する (変更なし)
+         */
+        function generateGaussian(mean, stdDev) {
+            let u1, u2;
+            do {
+                u1 = Math.random();
+            } while (u1 === 0);
+            u2 = Math.random();
+            const z1 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+            return mean + stdDev * z1;
+        }
+
+        /**
+         * 標準正規分布の逆関数 (累積確率 p に対する Z値を返す) (変更なし)
+         */
+        function invZ(p) {
+            if (p <= 0 || p >= 1) return NaN;
+            const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+            const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288852e+01];
+            const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+            const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+            const p_low = 0.02425;
+            const p_high = 1 - p_low;
+            let q, r;
+            if (p < p_low) {
+                q = Math.sqrt(-2 * Math.log(p));
+                r = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+                return r;
+            } else if (p < p_high) {
+                q = p - 0.5;
+                r = q * q;
+                r = (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+                return r;
+            } else {
+                q = Math.sqrt(-2 * Math.log(1 - p));
+                r = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+                return -r;
+            }
+        }
+
+        /**
+         * シミュレーションを実行する関数 (変更なし)
+         */
+        function runSimulation() {
+            // 1. 固定値を設定
+            const m = 2940;
+            const sigma = 340;
+            const n = 100;
+
+            errorMessageSpan.style.display = 'none';
+
+            // 3. サンプルデータを n個 生成
+            const samples = [];
+            for (let i = 0; i < n; i++) {
+                samples.push(generateGaussian(m, sigma));
+            }
+
+            // 4. 標本平均 (Xバー) を計算
+            const sum = samples.reduce((a, b) => a + b, 0);
+            const sampleMean = sum / n;
+
+            // 5. 標本標準偏差 (s) を計算 (不偏分散の平方根)
+            const sumSqDiff = samples.reduce((total, val) => total + Math.pow(val - sampleMean, 2), 0);
+            const variance = sumSqDiff / (n - 1);
+            const sampleStdDev = Math.sqrt(variance);
+
+            // 6. 整数値に丸める
+            const roundedMean = Math.round(sampleMean);
+            const roundedStdDev = Math.round(sampleStdDev);
+            let roundedSamples = samples.map(val => Math.round(val)); 
+            roundedSamples.sort((a, b) => a - b);
+
+            // 7. 10個ずつ改行するHTML文字列を生成
+            let dataHtml = "";
+            for (let i = 0; i < roundedSamples.length; i++) {
+                dataHtml += roundedSamples[i];
+                if ((i + 1) % 10 === 0 && i !== roundedSamples.length - 1) {
+                    dataHtml += ",<br>"; 
+                } else if (i !== roundedSamples.length - 1) {
+                    dataHtml += ", ";
+                }
+            }
+
+            // 8. 結果を表示
+            resultsArea.style.display = 'block';
+            sampleMeanSpan.textContent = roundedMean.toString();
+            sampleStdDevSpan.textContent = roundedStdDev.toString();
+            sampleDataListSpan.innerHTML = dataHtml; 
+
+            // 9. 信頼区間計算用に結果を保持
+            currentMean = m; 
+            currentSampleMean = roundedMean;      
+            currentSampleStdDev = roundedStdDev;  
+            currentN = n;
+            
+            // 10. 信頼区間エリアを表示
+            confidenceArea.style.display = 'block';
+            confidenceIntervalSpan.textContent = '---'; 
+        }
+
+        /**
+         * 信頼区間を計算する関数 (変更なし)
+         */
+        function calculateConfidenceInterval() {
+            // 1. 保持されている結果を確認
+            if (currentSampleMean === null || currentSampleStdDev === null || currentN === null || currentMean === null) {
+                confidenceIntervalSpan.textContent = "先にサンプルを抽出してください";
+                return;
+            }
+
+            // 2. 信頼度を取得
+            const t = parseInt(confidenceLevelInput.value);
+            if (isNaN(t) || t < 1 || t > 99 || !Number.isInteger(t)) {
+                confidenceIntervalSpan.textContent = "信頼度は1～99の整数";
+                return;
+            }
+
+            // 3. Z値を計算
+            const p = 1 - ((1 - t / 100) / 2);
+            const zValue = invZ(p);
+            
+            // 4. マージン・オブ・エラー (E) を計算
+            if (currentSampleStdDev === 0) {
+                confidenceIntervalSpan.textContent = "標本標準偏差が0のため計算不可";
+                return;
+            }
+            const marginOfError = zValue * (currentSampleStdDev / Math.sqrt(currentN));
+
+            // 5. 信頼区間を計算
+            const lowerBound = currentSampleMean - marginOfError;
+            const upperBound = currentSampleMean + marginOfError;
+
+            // 6. 母平均が区間内に含まれているか判定
+            const isCovered = (lowerBound <= currentMean && currentMean <= upperBound);
+            const resultMark = isCovered ? '〇' : '✕';
+
+            // 7. 結果を表示
+            confidenceIntervalSpan.textContent = `[ ${lowerBound.toFixed(1)},  ${upperBound.toFixed(1)} ]  ${resultMark}`;
+        }
+
+        /**
+         * エラーメッセージを表示する関数 (変更なし)
+         */
+        function showError(message) {
+            errorMessageSpan.textContent = message;
+            errorMessageSpan.style.display = 'block';
+            resultsArea.style.display = 'none';
+            confidenceArea.style.display = 'none';
+            currentMean = null;
+            currentSampleMean = null;
+        }
+
+        // === イベントリスナーの設定 (変更なし) ===
+        runButton.addEventListener('click', runSimulation);
+        calculateCIButton.addEventListener('click', calculateConfidenceInterval);
+
+    </script>
+</body>
+</html>
