@@ -125,6 +125,31 @@
             color: #34495e; 
             margin-left: 10px;
         }
+        
+        /* グラフ用のスタイル */
+        .chart-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+            background-color: #fafafa;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #eee;
+        }
+        canvas {
+            background-color: #fff;
+            border: 1px solid #ddd;
+        }
+        .z-display {
+            font-family: monospace;
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #e67e22;
+            margin-top: 5px;
+        }
+
         .note {
             font-size: 0.85em;
             color: #7f8c8d;
@@ -170,11 +195,19 @@
     
     <div class="container" id="confidenceArea" style="display:none;">
         <h2>信頼区間の算出</h2>
+        
+        <div class="chart-container">
+            <canvas id="normalDistCanvas" width="300" height="150"></canvas>
+            <div class="z-display" id="zValueDisplay">z = ---</div>
+        </div>
+
         <div class="control-group">
             <label for="confidenceLevel">信頼度 (t) %</label>
             <input type="number" id="confidenceLevel" value="95" min="1" max="99" step="1">
         </div>
+        
         <button id="calculateCIButton" class="secondary-button">信頼区間を算出</button>
+        
         <div class="results">
             <div class="result-item">
                 <span>信頼区間</span>
@@ -188,7 +221,7 @@
 
 
     <script>
-        // === DOM要素の取得 (変更なし) ===
+        // === DOM要素の取得 ===
         const runButton = document.getElementById('runButton');
         const resultsArea = document.getElementById('resultsArea');
         const sampleMeanSpan = document.getElementById('sampleMean');
@@ -200,18 +233,18 @@
         const confidenceLevelInput = document.getElementById('confidenceLevel');
         const calculateCIButton = document.getElementById('calculateCIButton');
         const confidenceIntervalSpan = document.getElementById('confidenceInterval');
+        
+        const canvas = document.getElementById('normalDistCanvas');
+        const ctx = canvas.getContext('2d');
+        const zValueDisplay = document.getElementById('zValueDisplay');
 
-        // === 抽出結果を保持する変数 (変更なし) ===
+        // === 変数 ===
         let currentMean = null; 
         let currentSampleMean = null; 
         let currentSampleStdDev = null; 
         let currentN = null;
 
-        // === 統計計算のコア関数 ===
-
-        /**
-         * 正規分布 N(mean, stdDev^2) に従う乱数を1つ生成する (変更なし)
-         */
+        // === 統計計算 ===
         function generateGaussian(mean, stdDev) {
             let u1, u2;
             do {
@@ -222,9 +255,6 @@
             return mean + stdDev * z1;
         }
 
-        /**
-         * 標準正規分布の逆関数 (累積確率 p に対する Z値を返す) (変更なし)
-         */
         function invZ(p) {
             if (p <= 0 || p >= 1) return NaN;
             const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
@@ -250,39 +280,130 @@
             }
         }
 
-        /**
-         * シミュレーションを実行する関数 (変更なし)
-         */
+        // === グラフ描画機能 ===
+        function drawNormalDistribution() {
+            // 信頼度 t を取得
+            let t = parseInt(confidenceLevelInput.value);
+            if (isNaN(t) || t < 1) t = 1;
+            if (t > 99) t = 99;
+            
+            // Z値を計算
+            const p = 1 - ((1 - t / 100) / 2);
+            const zCrit = Math.abs(invZ(p));
+
+            // Z値を表示更新 (★変更点: toFixed(2)を使用)
+            zValueDisplay.textContent = `z = ±${zCrit.toFixed(2)}`;
+
+            // Canvasの設定
+            const width = canvas.width;
+            const height = canvas.height;
+            const padding = 20;
+            const plotWidth = width;
+            const plotHeight = height - padding;
+            
+            // 座標変換関数
+            const minX = -4;
+            const maxX = 4;
+            const maxY = 0.45;
+
+            const mapX = (x) => {
+                return ((x - minX) / (maxX - minX)) * plotWidth;
+            };
+            const mapY = (y) => {
+                return plotHeight - (y / maxY) * plotHeight + 5;
+            };
+
+            const normalPDF = (x) => {
+                return (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * x * x);
+            };
+
+            // 描画クリア
+            ctx.clearRect(0, 0, width, height);
+
+            // 1. 塗りつぶし領域の描画
+            ctx.beginPath();
+            ctx.moveTo(mapX(-zCrit), mapY(0));
+            for (let x = -zCrit; x <= zCrit; x += 0.05) {
+                ctx.lineTo(mapX(x), mapY(normalPDF(x)));
+            }
+            ctx.lineTo(mapX(zCrit), mapY(normalPDF(zCrit)));
+            ctx.lineTo(mapX(zCrit), mapY(0));
+            ctx.closePath();
+            ctx.fillStyle = "rgba(52, 152, 219, 0.4)"; 
+            ctx.fill();
+
+            // 2. 全体の曲線の描画
+            ctx.beginPath();
+            let start = true;
+            for (let x = minX; x <= maxX; x += 0.05) {
+                const px = mapX(x);
+                const py = mapY(normalPDF(x));
+                if (start) {
+                    ctx.moveTo(px, py);
+                    start = false;
+                } else {
+                    ctx.lineTo(px, py);
+                }
+            }
+            ctx.strokeStyle = "#2c3e50";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 3. 基準線 (X軸)
+            ctx.beginPath();
+            ctx.moveTo(0, mapY(0));
+            ctx.lineTo(width, mapY(0));
+            ctx.strokeStyle = "#7f8c8d";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            
+            // 4. 中心線 (Z=0)
+            ctx.beginPath();
+            ctx.setLineDash([5, 3]);
+            ctx.moveTo(mapX(0), mapY(0));
+            ctx.lineTo(mapX(0), mapY(normalPDF(0)));
+            ctx.strokeStyle = "#95a5a6";
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 5. テキスト描画
+            ctx.fillStyle = "#333";
+            ctx.font = "12px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("0", mapX(0), height - 2);
+            
+            if (zCrit > 0.3) {
+                // ここも念のため toFixed(2) になっています（前回から変更なし）
+                ctx.fillText((-zCrit).toFixed(2), mapX(-zCrit), height - 2);
+                ctx.fillText((zCrit).toFixed(2), mapX(zCrit), height - 2);
+            }
+        }
+
+        // === シミュレーション実行 ===
         function runSimulation() {
-            // 1. 固定値を設定
             const m = 2940;
             const sigma = 340;
             const n = 100;
 
             errorMessageSpan.style.display = 'none';
 
-            // 3. サンプルデータを n個 生成
             const samples = [];
             for (let i = 0; i < n; i++) {
                 samples.push(generateGaussian(m, sigma));
             }
 
-            // 4. 標本平均 (Xバー) を計算
             const sum = samples.reduce((a, b) => a + b, 0);
             const sampleMean = sum / n;
 
-            // 5. 標本標準偏差 (s) を計算 (不偏分散の平方根)
             const sumSqDiff = samples.reduce((total, val) => total + Math.pow(val - sampleMean, 2), 0);
             const variance = sumSqDiff / (n - 1);
             const sampleStdDev = Math.sqrt(variance);
 
-            // 6. 整数値に丸める
             const roundedMean = Math.round(sampleMean);
             const roundedStdDev = Math.round(sampleStdDev);
             let roundedSamples = samples.map(val => Math.round(val)); 
             roundedSamples.sort((a, b) => a - b);
 
-            // 7. 10個ずつ改行するHTML文字列を生成
             let dataHtml = "";
             for (let i = 0; i < roundedSamples.length; i++) {
                 dataHtml += roundedSamples[i];
@@ -293,78 +414,56 @@
                 }
             }
 
-            // 8. 結果を表示
             resultsArea.style.display = 'block';
             sampleMeanSpan.textContent = roundedMean.toString();
             sampleStdDevSpan.textContent = roundedStdDev.toString();
             sampleDataListSpan.innerHTML = dataHtml; 
 
-            // 9. 信頼区間計算用に結果を保持
             currentMean = m; 
             currentSampleMean = roundedMean;      
             currentSampleStdDev = roundedStdDev;  
             currentN = n;
             
-            // 10. 信頼区間エリアを表示
             confidenceArea.style.display = 'block';
             confidenceIntervalSpan.textContent = '---'; 
+            
+            drawNormalDistribution();
         }
 
-        /**
-         * 信頼区間を計算する関数 (変更なし)
-         */
+        // === 信頼区間計算 ===
         function calculateConfidenceInterval() {
-            // 1. 保持されている結果を確認
             if (currentSampleMean === null || currentSampleStdDev === null || currentN === null || currentMean === null) {
                 confidenceIntervalSpan.textContent = "先にサンプルを抽出してください";
                 return;
             }
 
-            // 2. 信頼度を取得
             const t = parseInt(confidenceLevelInput.value);
             if (isNaN(t) || t < 1 || t > 99 || !Number.isInteger(t)) {
                 confidenceIntervalSpan.textContent = "信頼度は1～99の整数";
                 return;
             }
 
-            // 3. Z値を計算
             const p = 1 - ((1 - t / 100) / 2);
             const zValue = invZ(p);
             
-            // 4. マージン・オブ・エラー (E) を計算
             if (currentSampleStdDev === 0) {
                 confidenceIntervalSpan.textContent = "標本標準偏差が0のため計算不可";
                 return;
             }
             const marginOfError = zValue * (currentSampleStdDev / Math.sqrt(currentN));
 
-            // 5. 信頼区間を計算
             const lowerBound = currentSampleMean - marginOfError;
             const upperBound = currentSampleMean + marginOfError;
 
-            // 6. 母平均が区間内に含まれているか判定
             const isCovered = (lowerBound <= currentMean && currentMean <= upperBound);
             const resultMark = isCovered ? '〇' : '✕';
 
-            // 7. 結果を表示
             confidenceIntervalSpan.textContent = `[ ${lowerBound.toFixed(1)},  ${upperBound.toFixed(1)} ]  ${resultMark}`;
         }
 
-        /**
-         * エラーメッセージを表示する関数 (変更なし)
-         */
-        function showError(message) {
-            errorMessageSpan.textContent = message;
-            errorMessageSpan.style.display = 'block';
-            resultsArea.style.display = 'none';
-            confidenceArea.style.display = 'none';
-            currentMean = null;
-            currentSampleMean = null;
-        }
-
-        // === イベントリスナーの設定 (変更なし) ===
         runButton.addEventListener('click', runSimulation);
         calculateCIButton.addEventListener('click', calculateConfidenceInterval);
+        confidenceLevelInput.addEventListener('input', drawNormalDistribution);
 
     </script>
 </body>
