@@ -282,26 +282,21 @@
 
         // === グラフ描画機能 ===
         function drawNormalDistribution() {
-            // 信頼度 t を取得
             let t = parseInt(confidenceLevelInput.value);
             if (isNaN(t) || t < 1) t = 1;
             if (t > 99) t = 99;
             
-            // Z値を計算
             const p = 1 - ((1 - t / 100) / 2);
             const zCrit = Math.abs(invZ(p));
 
-            // Z値を表示更新 (★変更点: toFixed(2)を使用)
             zValueDisplay.textContent = `z = ±${zCrit.toFixed(2)}`;
 
-            // Canvasの設定
             const width = canvas.width;
             const height = canvas.height;
             const padding = 20;
             const plotWidth = width;
             const plotHeight = height - padding;
             
-            // 座標変換関数
             const minX = -4;
             const maxX = 4;
             const maxY = 0.45;
@@ -317,10 +312,8 @@
                 return (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * x * x);
             };
 
-            // 描画クリア
             ctx.clearRect(0, 0, width, height);
 
-            // 1. 塗りつぶし領域の描画
             ctx.beginPath();
             ctx.moveTo(mapX(-zCrit), mapY(0));
             for (let x = -zCrit; x <= zCrit; x += 0.05) {
@@ -332,7 +325,6 @@
             ctx.fillStyle = "rgba(52, 152, 219, 0.4)"; 
             ctx.fill();
 
-            // 2. 全体の曲線の描画
             ctx.beginPath();
             let start = true;
             for (let x = minX; x <= maxX; x += 0.05) {
@@ -349,7 +341,6 @@
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // 3. 基準線 (X軸)
             ctx.beginPath();
             ctx.moveTo(0, mapY(0));
             ctx.lineTo(width, mapY(0));
@@ -357,7 +348,6 @@
             ctx.lineWidth = 1;
             ctx.stroke();
             
-            // 4. 中心線 (Z=0)
             ctx.beginPath();
             ctx.setLineDash([5, 3]);
             ctx.moveTo(mapX(0), mapY(0));
@@ -366,14 +356,12 @@
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // 5. テキスト描画
             ctx.fillStyle = "#333";
             ctx.font = "12px Arial";
             ctx.textAlign = "center";
             ctx.fillText("0", mapX(0), height - 2);
             
             if (zCrit > 0.3) {
-                // ここも念のため toFixed(2) になっています（前回から変更なし）
                 ctx.fillText((-zCrit).toFixed(2), mapX(-zCrit), height - 2);
                 ctx.fillText((zCrit).toFixed(2), mapX(zCrit), height - 2);
             }
@@ -399,8 +387,12 @@
             const variance = sumSqDiff / (n - 1);
             const sampleStdDev = Math.sqrt(variance);
 
+            // 標本平均は整数
             const roundedMean = Math.round(sampleMean);
-            const roundedStdDev = Math.round(sampleStdDev);
+            
+            // 標本標準偏差は有効数字2桁
+            const roundedStdDev = parseFloat(sampleStdDev.toPrecision(2));
+            
             let roundedSamples = samples.map(val => Math.round(val)); 
             roundedSamples.sort((a, b) => a - b);
 
@@ -421,7 +413,7 @@
 
             currentMean = m; 
             currentSampleMean = roundedMean;      
-            currentSampleStdDev = roundedStdDev;  
+            currentSampleStdDev = roundedStdDev; 
             currentN = n;
             
             confidenceArea.style.display = 'block';
@@ -450,15 +442,22 @@
                 confidenceIntervalSpan.textContent = "標本標準偏差が0のため計算不可";
                 return;
             }
+            
             const marginOfError = zValue * (currentSampleStdDev / Math.sqrt(currentN));
 
             const lowerBound = currentSampleMean - marginOfError;
             const upperBound = currentSampleMean + marginOfError;
 
-            const isCovered = (lowerBound <= currentMean && currentMean <= upperBound);
+            // --- 変更点 ---
+            // 信頼区間の下限・上限を整数に丸める
+            const roundedLower = Math.round(lowerBound);
+            const roundedUpper = Math.round(upperBound);
+
+            // 判定も丸めた値で行う
+            const isCovered = (roundedLower <= currentMean && currentMean <= roundedUpper);
             const resultMark = isCovered ? '〇' : '✕';
 
-            confidenceIntervalSpan.textContent = `[ ${lowerBound.toFixed(1)},  ${upperBound.toFixed(1)} ]  ${resultMark}`;
+            confidenceIntervalSpan.textContent = `[ ${roundedLower},  ${roundedUpper} ]  ${resultMark}`;
         }
 
         runButton.addEventListener('click', runSimulation);
